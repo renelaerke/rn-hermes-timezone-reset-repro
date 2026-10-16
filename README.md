@@ -2,78 +2,66 @@
 
 ![Build](https://github.com/renelaerke/rn-hermes-timezone-reset-repro/workflows/Pre%20Merge%20Checks/badge.svg)
 
-This is your new React Native Reproducer project.
+**React Native never resets Hermes' timezone cache.** After the device timezone changes while the
+app process is alive, `Date` keeps using the **old** UTC offset until the app is cold started —
+while a freshly built `Intl.DateTimeFormat` reports the **new** zone. Two standard APIs disagree
+about the current zone inside the same process.
 
-# Reproducer TODO list
+Hermes exposes `IHermes::resetTimezoneCache()` for exactly this and documents that "the
+integration layer (e.g., React Native) must call this method" (`ReactCommon/jsi/jsi/hermes-interfaces.h`).
+React Native does not call it. See facebook/hermes#1751 and react/react-native#55467.
 
-- [x] 1. Create a new reproducer project.
-- [ ] 2. Git clone your repository locally.
-- [ ] 3. Edit the project to reproduce the failure you're seeing.
-- [ ] 4. Push your changes, so that Github Actions can run the CI.
-- [ ] 5. Make sure the repository is public and share the link with the issue you reported.
+This is a vanilla app from the
+[React Native reproducer template](https://github.com/react-native-community/reproducer-react-native)
+on **React Native 0.87.1**. The only change is [`ReproducerApp/App.tsx`](ReproducerApp/App.tsx):
+one screen, standard JavaScript, no native code, no extra dependencies.
 
-# How to use this Reproducer
+## Steps
 
-This project has been created with `npx @react-native-community/cli init` and is a vanilla React Native app.
+1. Run the app on a **physical iOS device** (the iOS Simulator follows the Mac's timezone) or an
+   **Android device/emulator**. The top line reads **YES**. Note "Process started".
+2. Background the app — press Home, do **not** swipe it away.
+3. In Settings, turn off automatic time zone and pick a different zone (Android: by hand in
+   Settings; adb is denied on retail devices).
+4. Return to the app. The top line reads **NO**: `Intl` reports the new zone, `Date` still uses the
+   old offset. "Process started" is unchanged, so this is the same process.
+5. Kill and relaunch: **YES** again.
 
-> [!IMPORTANT]  
-> Make sure you have completed the [React Native - Environment Setup](https://reactnative.dev/docs/set-up-your-environment) so that you have a working environment locally.
+Changing the zone by hand is not an artificial trigger: on arrival, automatic time zone sets the same
+system setting and sends apps the same notification (`Intent.ACTION_TIMEZONE_CHANGED` /
+`NSSystemTimeZoneDidChangeNotification`). This is what a user travelling with the app in the
+background gets — compressed into a minute.
 
-## Step 1: Start the Metro Server
+## Result — Galaxy S24, Android 16, Release build, 15 October 2026
 
-First, you will need to start **Metro**, the JavaScript _bundler_ that ships _with_ React Native.
+One process throughout ("Process started" `2026-10-15T14:27:21.414Z` on every screen):
 
-To start Metro, run the following command from the _root_ of your React Native project:
+| # | Sampled (UTC) | Device zone (`Intl`) | `Intl` offset | **`Date` offset** | `Intl` local time | **`Date` says** | Agree? |
+|---|---|---|---|---|---|---|---|
+| 1 | 15:22:37 | Europe/Copenhagen | +120 | +120 | 15 Oct 17:22 | Thu Oct 15 17:22 GMT+0200 | YES |
+| 2 | 15:24:04 | Pacific/Auckland | +780 | **+120** | **16 Oct** 04:24 | Thu Oct 15 17:24 GMT+0200 | **NO** |
+| 3 | 15:24:58 | America/New_York | −240 | **+120** | 15 Oct 11:24 | Thu Oct 15 17:24 GMT+0200 | **NO** |
+| 4 | 15:27:10 | Pacific/Honolulu | −600 | **+120** | 15 Oct 05:27 | Thu Oct 15 17:27 GMT+0200 | **NO** |
+| 5 | 15:28:10 | Europe/Copenhagen | +120 | +120 | 15 Oct 17:28 | Thu Oct 15 17:28 GMT+0200 | YES |
 
-```bash
-# using npm
-npm start
+`Date` never leaves the starting zone. Row 2 is already 16 October in Auckland while `Date` says the
+15th. Row 5 only "agrees" because the device returned to the zone `Date` was stuck in.
 
-# OR using Yarn
-yarn start
+| Copenhagen | Auckland | New York | Honolulu | Copenhagen |
+|---|---|---|---|---|
+| ![](screenshots/s24-rn0871-1-copenhagen-yes.jpg) | ![](screenshots/s24-rn0871-2-auckland-no.jpg) | ![](screenshots/s24-rn0871-3-new-york-no.jpg) | ![](screenshots/s24-rn0871-4-honolulu-no.jpg) | ![](screenshots/s24-rn0871-5-copenhagen-yes.jpg) |
+
+The same staleness was measured on an iPhone 17e (iOS) with React Native 0.85.1 on 2026-08-12:
+`getTimezoneOffset()` stayed at +120 after a Copenhagen → Sydney change (true +600).
+
+## Run it
+
+```sh
+cd ReproducerApp
+yarn install
+# Android (Release embeds the bundle — no Metro needed)
+yarn react-native run-android --mode release
+# iOS (physical device)
+cd ios && pod install && cd ..
+yarn react-native run-ios --mode Release --device
 ```
-
-## Step 2: Start your Application
-
-Let Metro Bundler run in its _own_ terminal. Open a _new_ terminal from the _root_ of your React Native project. Run the following command to start your _Android_ or _iOS_ app:
-
-### For Android
-
-```bash
-# using npm
-npm run android
-
-# OR using Yarn
-yarn android
-```
-
-### For iOS
-
-First, make sure you install dependencies with:
-
-```bash
-cd ios && bundle install && bundle exec pod install
-```
-
-Then you can run the iOS app with:
-
-```bash
-# using npm
-npm run ios
-
-# OR using Yarn
-yarn ios
-```
-
-If everything is set up _correctly_, you should see your new app running in your _Android Emulator_ or _iOS Simulator_ shortly provided you have set up your emulator/simulator correctly.
-
-This is one way to run your app — you can also run it directly from within Android Studio and Xcode respectively.
-
-## Step 3: Modifying your App
-
-Now that you have successfully run the app, let's modify it.
-
-1. Open `App.tsx` in your text editor of choice and edit some lines.
-2. For **Android**: Press the <kbd>R</kbd> key twice or select **"Reload"** from the **Developer Menu** (<kbd>Ctrl</kbd> + <kbd>M</kbd> (on Window and Linux) or <kbd>Cmd ⌘</kbd> + <kbd>M</kbd> (on macOS)) to see your changes!
-
-   For **iOS**: Hit <kbd>Cmd ⌘</kbd> + <kbd>R</kbd> in your iOS Simulator to reload the app and see your changes!
