@@ -13,7 +13,7 @@ React Native does not call it. See facebook/hermes#1751 and react/react-native#5
 
 This is a vanilla app from the
 [React Native reproducer template](https://github.com/react-native-community/reproducer-react-native)
-on **React Native 0.87.1**. The only change is [`ReproducerApp/App.tsx`](ReproducerApp/App.tsx):
+on **React Native 0.88.0**. The only change is [`ReproducerApp/App.tsx`](ReproducerApp/App.tsx):
 one screen, standard JavaScript, no native code, no extra dependencies.
 
 ## Steps
@@ -32,27 +32,50 @@ system setting and sends apps the same notification (`Intent.ACTION_TIMEZONE_CHA
 `NSSystemTimeZoneDidChangeNotification`). This is what a user travelling with the app in the
 background gets — compressed into a minute.
 
-## Result — Galaxy S24, Android 16, Release build, 15 October 2026
+## Result — React Native 0.88.0, iOS and Android, 16 October 2026
 
-One process throughout ("Process started" `2026-10-15T14:27:21.414Z` on every screen):
+Release builds, one process per device throughout (the "Process started" value is identical on
+every screen), zone changed by hand in Settings: Copenhagen → Auckland → New York → Honolulu →
+Copenhagen.
+
+### iOS — iPhone 17e (physical device)
 
 | # | Sampled (UTC) | Device zone (`Intl`) | `Intl` offset | **`Date` offset** | `Intl` local time | **`Date` says** | Agree? |
 |---|---|---|---|---|---|---|---|
-| 1 | 15:22:37 | Europe/Copenhagen | +120 | +120 | 15 Oct 17:22 | Thu Oct 15 17:22 GMT+0200 | YES |
-| 2 | 15:24:04 | Pacific/Auckland | +780 | **+120** | **16 Oct** 04:24 | Thu Oct 15 17:24 GMT+0200 | **NO** |
-| 3 | 15:24:58 | America/New_York | −240 | **+120** | 15 Oct 11:24 | Thu Oct 15 17:24 GMT+0200 | **NO** |
-| 4 | 15:27:10 | Pacific/Honolulu | −600 | **+120** | 15 Oct 05:27 | Thu Oct 15 17:27 GMT+0200 | **NO** |
-| 5 | 15:28:10 | Europe/Copenhagen | +120 | +120 | 15 Oct 17:28 | Thu Oct 15 17:28 GMT+0200 | YES |
+| 1 | 06:48:28 | Europe/Copenhagen | +120 | +120 | 16 Oct 08:48 | Fri Oct 16 08:48 GMT+0200 | YES |
+| 2 | 06:48:57 | Pacific/Auckland | +780 | **+120** | 16 Oct 19:48 | Fri Oct 16 08:48 GMT+0200 | **NO** |
+| 3 | 06:49:32 | America/New_York | −240 | **+120** | 16 Oct 02:49 | Fri Oct 16 08:49 GMT+0200 | **NO** |
+| 4 | 06:49:51 | Pacific/Honolulu | −600 | **+120** | **15 Oct** 20:49 | Fri Oct 16 08:49 GMT+0200 | **NO** |
+| 5 | 06:50:14 | Europe/Copenhagen | +120 | +120 | 16 Oct 08:50 | Fri Oct 16 08:50 GMT+0200 | YES |
 
-`Date` never leaves the starting zone. Row 2 is already 16 October in Auckland while `Date` says the
-15th. Row 5 only "agrees" because the device returned to the zone `Date` was stuck in.
+The iPhone's own status-bar clock shows the correct local time in the same screenshot — 19.48 in
+Auckland, 02.49 in New York, 20.49 in Honolulu — while `Date` reports 08:48–08:49. The OS knows the
+time; only the JavaScript engine is stuck.
 
 | Copenhagen | Auckland | New York | Honolulu | Copenhagen |
 |---|---|---|---|---|
-| ![](screenshots/s24-rn0871-1-copenhagen-yes.jpg) | ![](screenshots/s24-rn0871-2-auckland-no.jpg) | ![](screenshots/s24-rn0871-3-new-york-no.jpg) | ![](screenshots/s24-rn0871-4-honolulu-no.jpg) | ![](screenshots/s24-rn0871-5-copenhagen-yes.jpg) |
+| ![](screenshots/iphone17e-rn0880-1-copenhagen-yes.jpg) | ![](screenshots/iphone17e-rn0880-2-auckland-no.jpg) | ![](screenshots/iphone17e-rn0880-3-newyork-no.jpg) | ![](screenshots/iphone17e-rn0880-4-honolulu-no.jpg) | ![](screenshots/iphone17e-rn0880-5-copenhagen-yes.jpg) |
 
-The same staleness was measured on an iPhone 17e (iOS) with React Native 0.85.1 on 2026-08-12:
-`getTimezoneOffset()` stayed at +120 after a Copenhagen → Sydney change (true +600).
+### Android — Galaxy S24, Android 16
+
+| # | Sampled (UTC) | Device zone (`Intl`) | `Intl` offset | **`Date` offset** | `Intl` local time | **`Date` says** | Agree? |
+|---|---|---|---|---|---|---|---|
+| 1 | 07:19:16 | Europe/Copenhagen | +120 | +120 | 16 Oct 09:19 | Fri Oct 16 09:19 GMT+0200 | YES |
+| 2 | 07:19:48 | Pacific/Auckland | +780 | **+120** | 16 Oct 20:19 | Fri Oct 16 09:19 GMT+0200 | **NO** |
+| 3 | 07:20:19 | America/New_York | −240 | **+120** | 16 Oct 03:20 | Fri Oct 16 09:20 GMT+0200 | **NO** |
+| 4 | 07:20:43 | Pacific/Honolulu | −600 | **+120** | **15 Oct** 21:20 | Fri Oct 16 09:20 GMT+0200 | **NO** |
+| 5 | 07:21:00 | Europe/Copenhagen | +120 | +120 | 16 Oct 09:21 | Fri Oct 16 09:21 GMT+0200 | YES |
+
+| Copenhagen | Auckland | New York | Honolulu | Copenhagen |
+|---|---|---|---|---|
+| ![](screenshots/s24-rn0880-1-copenhagen-yes.jpg) | ![](screenshots/s24-rn0880-2-auckland-no.jpg) | ![](screenshots/s24-rn0880-3-newyork-no.jpg) | ![](screenshots/s24-rn0880-4-honolulu-no.jpg) | ![](screenshots/s24-rn0880-5-copenhagen-yes.jpg) |
+
+On both platforms `Date` never leaves the starting zone. Row 4 is a wrong calendar date — still
+15 October in Honolulu, `Date` says the 16th. Row 5 only "agrees" because the device returned to
+the zone `Date` was stuck in.
+
+Also reproduced on React Native 0.87.1 (Galaxy S24, 15 October 2026), and measured on an iPhone 17e
+with React Native 0.85.1 (2026-08-12).
 
 ## Run it
 
